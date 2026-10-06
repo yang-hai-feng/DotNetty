@@ -66,6 +66,23 @@ namespace DotNetty.Codecs.Redis.Tests
         }
 
         [Fact]
+        public void KeepsNestedArraysChargedUntilTopLevelCompletes()
+        {
+            var channel = new EmbeddedChannel(new RedisArrayAggregator(5, 10));
+
+            Assert.False(channel.WriteInbound(new ArrayHeaderRedisMessage(2)));
+            Assert.False(channel.WriteInbound(new ArrayHeaderRedisMessage(2)));
+            Assert.False(channel.WriteInbound(new IntegerRedisMessage(1)));
+            Assert.False(channel.WriteInbound(new IntegerRedisMessage(2)));
+
+            DecoderException exception = Assert.Throws<DecoderException>(
+                () => channel.WriteInbound(new ArrayHeaderRedisMessage(2)));
+
+            Assert.Contains("5", Assert.IsType<CodecException>(exception.InnerException).Message);
+            Assert.False(channel.Finish());
+        }
+
+        [Fact]
         public void ReleasesPartialArrayOnRemoval()
         {
             var channel = new EmbeddedChannel(new RedisArrayAggregator());
@@ -79,6 +96,21 @@ namespace DotNetty.Codecs.Redis.Tests
 
             Assert.Equal(0, message.ReferenceCount);
             Assert.False(channel.Finish());
+        }
+
+        [Fact]
+        public void ReleasesPartialArrayOnChannelInactive()
+        {
+            var channel = new EmbeddedChannel(new RedisArrayAggregator());
+            var message = new FullBulkStringRedisMessage(Unpooled.Buffer(0));
+
+            Assert.False(channel.WriteInbound(new ArrayHeaderRedisMessage(2)));
+            Assert.False(channel.WriteInbound(message));
+            Assert.Equal(1, message.ReferenceCount);
+
+            Assert.Throws<PrematureChannelClosureException>(() => channel.Finish());
+
+            Assert.Equal(0, message.ReferenceCount);
         }
 
         [Theory]

@@ -65,7 +65,6 @@ namespace DotNetty.Codecs.Redis
                 {
                     message = new ArrayRedisMessage(current.Children);
                     this.depths.Pop();
-                    this.pendingElements -= current.Length;
                 }
                 else
                 {
@@ -74,6 +73,7 @@ namespace DotNetty.Codecs.Redis
                 }
             }
 
+            this.pendingElements = 0;
             output.Add(message);
         }
 
@@ -136,12 +136,19 @@ namespace DotNetty.Codecs.Redis
 
         public override void ChannelInactive(IChannelHandlerContext context)
         {
-            base.ChannelInactive(context);
-
-            if (this.depths.Count > 0)
+            try
             {
-                context.FireExceptionCaught(new PrematureChannelClosureException(
-                    $"Channel gone inactive with {this.depths.Count} messages still incomplete"));
+                base.ChannelInactive(context);
+
+                if (this.depths.Count > 0)
+                {
+                    context.FireExceptionCaught(new PrematureChannelClosureException(
+                        $"Channel gone inactive with {this.depths.Count} messages still incomplete"));
+                }
+            }
+            finally
+            {
+                this.ReleaseAndClearDepths();
             }
         }
 
